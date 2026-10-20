@@ -1,0 +1,49 @@
+server:
+  port: 8080
+
+app:
+  modbus:
+    host: 127.0.0.1
+    port: 1502              # Modbus Slave 的 TcpServer 端口（默认 502 需管理员，这里用 1502）
+    poll-interval-ms: 1000  # 轮询周期 1s
+    timeout-ms: 3000
+    points:
+      - device: sim-device-01
+        name: temperature
+        slaveId: 1
+        address: 0          # 保持寄存器起始地址
+        quantity: 2
+        dataType: FLOAT
+        scale: 1.0
+        unit: "℃"
+        deadband: 0.5
+      - device: sim-device-01
+        name: pressure
+        slaveId: 1
+        address: 2
+        quantity: 2
+        dataType: FLOAT
+        scale: 1.0
+        unit: "kPa"
+        deadband: 2.0
+      - device: sim-device-01
+        name: vibration
+        slaveId: 1
+        address: 4
+        quantity: 2
+        dataType: INT16
+        scale: 0.01
+        unit: "mm/s"
+        deadband: 0.1
+
+# InfluxDB2 连接（首次运行需在 influx 里创建 org/bucket/token 后填入）
+influx:
+  enabled: true
+  url: http://127.0.0.1:8086
+  token: UxjihAyYPIcY-BD2fSoRgnrkCPTLOXOFHwab51PHB9c-kz8eyTFVCcevIdilldZd1eDRQJJaWvWkPEwAxttMMw==
+  org: test
+  bucket: data
+
+logging:
+  level:
+    com.demo.iotcollect: INFO
