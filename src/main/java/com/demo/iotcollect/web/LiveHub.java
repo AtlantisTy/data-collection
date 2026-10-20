@@ -2,6 +2,8 @@ package com.demo.iotcollect.web;
 
 import com.demo.iotcollect.model.DataRecord;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.Map;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -24,23 +26,41 @@ public class LiveHub extends TextWebSocketHandler {
         this.mapper = mapper;
     }
 
+    /** 广播一条采样记录 */
     public void broadcast(DataRecord record) {
-        if (sessions.isEmpty()) {
-            return;
-        }
         try {
-            String json = mapper.writeValueAsString(record);
-            TextMessage msg = new TextMessage(json);
-            for (WebSocketSession s : sessions) {
-                if (s.isOpen()) {
-                    try {
-                        s.sendMessage(msg);
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
+            send(mapper.writeValueAsString(record));
         } catch (Exception e) {
             // 序列化失败不必中断采集
+        }
+    }
+
+    /** 广播设备心跳状态事件，如 {type:HEARTBEAT, device, status, timestamp} */
+    public void pushHeartbeat(String device, String status, java.time.Instant ts) {
+        try {
+            String json = mapper.writeValueAsString(Map.of(
+                    "type", "HEARTBEAT",
+                    "device", device,
+                    "status", status,
+                    "timestamp", ts.toString()));
+            send(json);
+        } catch (Exception e) {
+            // 序列化失败不必中断
+        }
+    }
+
+    private void send(String json) {
+        if (sessions.isEmpty() || json == null) {
+            return;
+        }
+        TextMessage msg = new TextMessage(json);
+        for (WebSocketSession s : sessions) {
+            if (s.isOpen()) {
+                try {
+                    s.sendMessage(msg);
+                } catch (Exception ignored) {
+                }
+            }
         }
     }
 

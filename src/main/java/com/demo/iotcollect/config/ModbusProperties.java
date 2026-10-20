@@ -20,6 +20,8 @@ public class ModbusProperties {
     private int pollIntervalMs = 1000;
     /** 单次请求超时（毫秒） */
     private int timeoutMs = 3000;
+    /** 设备心跳离线阈值（毫秒）：设备最后一次成功读数超过该时长则判离线 */
+    private int heartbeatTimeoutMs = 5000;
     /** 点位表 */
     private List<DevicePoint> points = new ArrayList<>();
 
@@ -34,6 +36,9 @@ public class ModbusProperties {
 
     public int getTimeoutMs() { return timeoutMs; }
     public void setTimeoutMs(int timeoutMs) { this.timeoutMs = timeoutMs; }
+
+    public int getHeartbeatTimeoutMs() { return heartbeatTimeoutMs; }
+    public void setHeartbeatTimeoutMs(int heartbeatTimeoutMs) { this.heartbeatTimeoutMs = heartbeatTimeoutMs; }
 
     public List<DevicePoint> getPoints() { return points; }
     public void setPoints(List<DevicePoint> points) { this.points = points; }

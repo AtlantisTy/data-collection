@@ -7,6 +7,7 @@ app:
     port: 1502              # Modbus Slave 的 TcpServer 端口（默认 502 需管理员，这里用 1502）
     poll-interval-ms: 1000  # 轮询周期 1s
     timeout-ms: 3000
+    heartbeat-timeout-ms: 5000  # 设备心跳离线阈值
     points:
       - device: sim-device-01
         name: temperature

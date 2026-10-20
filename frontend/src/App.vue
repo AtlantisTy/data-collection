@@ -6,6 +6,7 @@ import axios from 'axios'
 // ---------- 状态 ----------
 const points = ref([])                     // 点位表 [{device,name,unit,...}]
 const latest = ref({})                     // metric -> 最新值对象
+const deviceStatus = ref({})               // device -> ONLINE/OFFLINE（来自心跳推送）
 const wsStatus = ref('未连接')
 const nowText = ref('')
 
@@ -63,8 +64,14 @@ function connect() {
   ws.onmessage = (e) => {
     try {
       const rec = JSON.parse(e.data)
+      // 心跳状态事件：{type:'HEARTBEAT', device, status, timestamp}
+      if (rec.type === 'HEARTBEAT') {
+        deviceStatus.value[rec.device] = rec.status
+        return
+      }
+      // 采样记录（value 为 NaN 表示数据质量 BAD）
       latest.value[rec.device + '_' + rec.name] = rec
-      appendRealtime(rec)
+      if (Number.isFinite(rec.value)) appendRealtime(rec)
     } catch (err) { /* ignore */ }
   }
 }
@@ -129,19 +136,29 @@ const metricKeys = () => Object.keys(latest.value)
     <header>
       <h2>工业数据采集看板</h2>
       <span class="status" :class="wsStatus === '已连接' ? 'ok' : 'warn'">实时通道：{{ wsStatus }}</span>
+      <span
+        v-for="(st, dev) in deviceStatus" :key="dev"
+        class="badge" :class="st === 'ONLINE' ? 'ok' : 'warn'">
+        {{ dev }}：{{ st === 'ONLINE' ? '在线' : '离线' }}
+      </span>
       <span>时钟：{{ nowText }}</span>
     </header>
 
     <section class="card">
       <h3>实时点位值</h3>
       <table>
-        <thead><tr><th>设备</th><th>点位</th><th>值</th><th>单位</th><th>采样时间</th></tr></thead>
+        <thead><tr><th>设备</th><th>点位</th><th>值</th><th>单位</th><th>质量</th><th>采样时间</th></tr></thead>
         <tbody>
           <tr v-for="k in metricKeys()" :key="k">
             <td>{{ latest[k]?.device }}</td>
             <td>{{ latest[k]?.name }}</td>
-            <td class="val">{{ latest[k] ? latest[k].value.toFixed(3) : '—' }}</td>
+            <td class="val">{{ latest[k] && Number.isFinite(latest[k].value) ? latest[k].value.toFixed(3) : '—' }}</td>
             <td>{{ latest[k]?.unit }}</td>
+            <td>
+              <span class="badge" :class="latest[k]?.quality === 'BAD' ? 'warn' : 'ok'">
+                {{ latest[k]?.quality === 'BAD' ? 'BAD' : 'GOOD' }}
+              </span>
+            </td>
             <td>{{ latest[k] ? new Date(latest[k].timestamp).toLocaleTimeString() : '—' }}</td>
           </tr>
         </tbody>
@@ -176,8 +193,9 @@ body { margin: 0; background: #0f172a; color: #e2e8f0; font-family: system-ui, s
 .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
 header { display: flex; align-items: center; gap: 20px; }
 header h2 { margin: 0 20px 0 0; }
-.status.ok { color: #4ade80; }
-.status.warn { color: #fbbf24; }
+.status.ok, .badge.ok { color: #4ade80; }
+.status.warn, .badge.warn { color: #fbbf24; }
+.badge { background: #0f172a; border: 1px solid #475569; border-radius: 999px; padding: 2px 10px; font-size: 12px; }
 .card { background: #1e293b; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
 .card h3 { margin: 0 0 12px; }
 table { width: 100%; border-collapse: collapse; }

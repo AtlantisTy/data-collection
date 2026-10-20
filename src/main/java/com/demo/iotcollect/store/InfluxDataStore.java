@@ -2,6 +2,7 @@ package com.demo.iotcollect.store;
 
 import com.demo.iotcollect.config.InfluxProperties;
 import com.demo.iotcollect.model.DataRecord;
+import com.demo.iotcollect.model.Quality;
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.client.QueryApi;
 import com.influxdb.client.WriteApiBlocking;
@@ -51,7 +52,9 @@ public class InfluxDataStore {
         return writeApi;
     }
 
-    /** 写入一条采样记录 */
+    /** 写入一条采样记录。
+     * GOOD 写 value 字段；BAD 值不可用（NaN 不被 influx 行协议支持），
+     * 故不写 value、仅以 quality tag + quality_code 数值字段保点，保证"设备离线"在库可见。 */
     public void write(DataRecord r) {
         if (!usable()) {
             return;
@@ -59,7 +62,11 @@ public class InfluxDataStore {
         Point p = Point.measurement(MEASUREMENT)
                 .addTag("device", r.device())
                 .addTag("point", r.name())
-                .addField("value", r.value())
+                .addTag("quality", r.quality().name());
+        if (r.quality() == Quality.GOOD) {
+            p.addField("value", r.value());
+        }
+        p.addField("quality_code", r.quality() == Quality.GOOD ? 0.0 : 1.0)
                 .time(r.timestamp(), WritePrecision.MS);
         try {
             writeApi().writePoint(p);
@@ -77,7 +84,8 @@ public class InfluxDataStore {
                 + " |> range(start: " + rfc(from) + ", stop: " + rfc(to) + ")"
                 + " |> filter(fn: (r) => r._measurement == \"" + MEASUREMENT + "\""
                 + " and r.device == \"" + esc(device) + "\""
-                + " and r.point == \"" + esc(point) + "\")"
+                + " and r.point == \"" + esc(point) + "\""
+                + " and r._field == \"value\")"
                 + " |> sort(columns: [\"_time\"])";
 
         List<TimeSeriesPoint> out = new ArrayList<>();

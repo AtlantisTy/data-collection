@@ -4,6 +4,8 @@ import com.demo.iotcollect.config.ModbusProperties;
 import com.demo.iotcollect.model.DataRecord;
 import com.demo.iotcollect.model.DevicePoint;
 import com.demo.iotcollect.filter.FilterStrategy;
+import com.demo.iotcollect.heartbeat.HeartbeatMonitor;
+import com.demo.iotcollect.model.Quality;
 import com.demo.iotcollect.producer.DataProducer;
 import com.demo.iotcollect.store.InfluxDataStore;
 import com.demo.iotcollect.web.LiveHub;
@@ -29,16 +31,18 @@ public class CollectScheduler {
     private final InfluxDataStore store;
     private final LiveHub liveHub;
     private final FilterStrategy filter;
+    private final HeartbeatMonitor heartbeat;
 
     public CollectScheduler(ModbusProperties props, ModbusClientService modbus,
                             DataProducer producer, InfluxDataStore store, LiveHub liveHub,
-                            FilterStrategy filter) {
+                            FilterStrategy filter, HeartbeatMonitor heartbeat) {
         this.props = props;
         this.modbus = modbus;
         this.producer = producer;
         this.store = store;
         this.liveHub = liveHub;
         this.filter = filter;
+        this.heartbeat = heartbeat;
     }
 
     @Scheduled(fixedDelayString = "${app.modbus.poll-interval-ms:1000}")
@@ -48,20 +52,36 @@ public class CollectScheduler {
             return;
         }
         for (DevicePoint point : points) {
+            Instant now = Instant.now();
+            String device = point.getDevice();
             try {
                 double value = modbus.readValue(point);
-                DataRecord record = new DataRecord(point.getDevice(), point.getName(),
-                        value, point.getUnit(), Instant.now());
-                // 过滤（首版透传，后续死区过滤在此拦截）
+                heartbeat.recordSuccess(device, now);
+                DataRecord record = new DataRecord(device, point.getName(),
+                        value, point.getUnit(), now, Quality.GOOD);
+                // 死区过滤：GOOD 且变化未超阈值时抑制
                 if (filter.pass(record)) {
-                    producer.publish(record);  // 出口：预留 Kafka 缓冲位
-                    store.write(record);       // 入库：InfluxDB2
-                    liveHub.broadcast(record); // 实时推送：前端曲线
+                    emit(record);
                 }
             } catch (Exception e) {
+                // 失败仍要上报 BAD 记录（质量可见），且绕过死区直接出口；不更新心跳
+                DataRecord bad = new DataRecord(device, point.getName(),
+                        Double.NaN, point.getUnit(), now, Quality.BAD);
+                try {
+                    emit(bad);
+                } catch (Exception ex) {
+                    log.warn("上报 BAD 记录失败 {}: {}", point, ex.getMessage());
+                }
                 // 单个点/从站失败不影响其它点
-                log.warn("采集跳过点位 {}: {}", point, e.getMessage());
+                log.warn("采集失败点位 {}: {}", point, e.getMessage());
             }
         }
+    }
+
+    /** 统一出口：发布（预留 Kafka）、入库、实时推送 */
+    private void emit(DataRecord record) {
+        producer.publish(record);  // 出口：预留 Kafka 缓冲位
+        store.write(record);       // 入库：InfluxDB2
+        liveHub.broadcast(record); // 实时推送：前端曲线
     }
 }
